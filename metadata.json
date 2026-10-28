@@ -1,0 +1,8 @@
+{
+  "name": "Arrow Puzzle - Tap Away Game",
+  "description": "Untangle intricate labyrinth paths, escape the grid, and tap away arrows in this satisfying logic puzzle game.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

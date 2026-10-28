@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a" />
+      <stop offset="50%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+    <linearGradient id="arrowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#93c5fd" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Rounded App Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+
+  <!-- Subtle Inner Grid Matrix Pattern -->
+  <g opacity="0.15" stroke="#ffffff" stroke-width="4">
+    <circle cx="156" cy="156" r="6" fill="#ffffff" />
+    <circle cx="256" cy="156" r="6" fill="#ffffff" />
+    <circle cx="356" cy="156" r="6" fill="#ffffff" />
+    <circle cx="156" cy="256" r="6" fill="#ffffff" />
+    <circle cx="256" cy="256" r="6" fill="#ffffff" />
+    <circle cx="356" cy="256" r="6" fill="#ffffff" />
+    <circle cx="156" cy="356" r="6" fill="#ffffff" />
+    <circle cx="256" cy="356" r="6" fill="#ffffff" />
+    <circle cx="356" cy="356" r="6" fill="#ffffff" />
+  </g>
+
+  <!-- Labyrinth Pathway Trail -->
+  <path d="M 156 356 L 156 256 L 256 256 L 256 168 L 330 168"
+        fill="none"
+        stroke="#60a5fa"
+        stroke-width="36"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        opacity="0.4" />
+
+  <!-- Main Hero Escaping Arrow -->
+  <g filter="url(#glow)">
+    <!-- Winding Arrow Shaft -->
+    <path d="M 176 336 L 176 256 L 276 256 L 276 176 L 334 176"
+          fill="none"
+          stroke="url(#arrowGrad)"
+          stroke-width="38"
+          stroke-linecap="round"
+          stroke-linejoin="round" />
+    <!-- Arrowhead -->
+    <polygon points="320,136 384,176 320,216" fill="url(#arrowGrad)" />
+  </g>
+
+  <!-- Gold Star Accent for Mastery -->
+  <polygon points="380,330 389,348 409,351 394,366 398,386 380,376 362,386 366,366 351,351 371,348"
+           fill="#fbbf24"
+           stroke="#f59e0b"
+           stroke-width="3"
+           filter="url(#glow)" />
+</svg>
