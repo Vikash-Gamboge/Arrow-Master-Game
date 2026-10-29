@@ -205,11 +205,22 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
           </div>
         )}
 
-        {/* APK build note */}
-        <div className="mt-3 pt-3 border-t border-slate-100 text-center">
+        {/* APK build note & direct GitHub Release Download */}
+        <div className="mt-3 pt-3 border-t border-slate-100 text-center space-y-2">
+          <a
+            href="https://github.com/Vikash-Gamboge/Arrow-master/releases/latest/download/app-debug.apk"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => sound.playTap()}
+            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-md flex items-center justify-center gap-2 cursor-pointer touch-manipulation"
+          >
+            <Download className="w-4 h-4" />
+            <span>DOWNLOAD .APK FILE DIRECTLY</span>
+          </a>
+
           <details className="text-left group">
             <summary className="text-[11px] font-bold text-blue-600 hover:text-blue-800 cursor-pointer list-none flex items-center justify-between">
-              <span>Physical .apk file chahiye? (Capacitor)</span>
+              <span>Local Build Commands (Capacitor)</span>
               <ArrowRight className="w-3.5 h-3.5 group-open:rotate-90 transition-transform" />
             </summary>
             <div className="mt-2 p-2.5 rounded-xl bg-slate-900 text-slate-300 font-mono text-[10px] leading-relaxed relative">
