@@ -208,7 +208,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
         {/* APK build note & direct GitHub Release Download */}
         <div className="mt-3 pt-3 border-t border-slate-100 text-center space-y-2">
           <a
-            href="https://github.com/Vikash-Gamboge/Arrow-master/releases/latest/download/app-debug.apk"
+            href="https://github.com/Vikash-Gamboge/Arrow-Master-Game/releases/latest/download/app-debug.apk"
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => sound.playTap()}
