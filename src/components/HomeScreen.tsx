@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Play,
   Settings,
@@ -15,10 +15,9 @@ import {
   Lock,
   Star,
   ChevronRight,
-  Download,
+  AlertCircle,
 } from 'lucide-react';
 import { GoldCoin } from './GoldCoin';
-import { InstallModal } from './InstallModal';
 import { DailyChallenge3DLogo, SnakeArrow3DLogo } from './FeatureCardLogos';
 import {
   AVAILABLE_AVATARS,
@@ -28,8 +27,14 @@ import {
   savePlayerAvatar,
 } from '../game/playerProfile';
 import { sound } from '../game/sound';
-import { showRewardedAd } from '../game/adService';
-import { BannerAd } from './BannerAd';
+import {
+  showRewardedAd,
+  loadRewardedAd,
+  checkRewardedAdReady,
+  subscribeToAdState,
+  AdLoadState,
+  unityAdsService,
+} from '../game/adService';
 import { getSimplifiedDifficulty } from '../game/completionStats';
 import { getMonthCompletedCount } from '../game/dailyChallenge';
 import { loadHighestSnakeStage, getSnakeDifficultyLabel } from '../game/snakeArrowLogic';
@@ -49,6 +54,10 @@ interface HomeScreenProps {
   onOpenSettings: () => void;
   onOpenThemes?: () => void;
   onClaimDailyCoins: (amount: number) => void;
+  isEditingProfile?: boolean;
+  onSetIsEditingProfile?: (open: boolean) => void;
+  isDailyRewardOpen?: boolean;
+  onSetIsDailyRewardOpen?: (open: boolean) => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -66,16 +75,49 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onOpenSettings,
   onOpenThemes,
   onClaimDailyCoins,
+  isEditingProfile: externalIsEditingProfile,
+  onSetIsEditingProfile,
+  isDailyRewardOpen: externalIsDailyRewardOpen,
+  onSetIsDailyRewardOpen,
 }) => {
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [internalIsEditingProfile, setInternalIsEditingProfile] = useState(false);
+  const isEditingProfile = externalIsEditingProfile !== undefined ? externalIsEditingProfile : internalIsEditingProfile;
+  const setIsEditingProfile = onSetIsEditingProfile || setInternalIsEditingProfile;
+
   const [editedName, setEditedName] = useState(playerNickname);
   const [selectedAvatar, setSelectedAvatar] = useState(playerAvatar);
 
-  const [isDailyRewardOpen, setIsDailyRewardOpen] = useState(false);
+  const [internalIsDailyRewardOpen, setInternalIsDailyRewardOpen] = useState(false);
+  const isDailyRewardOpen = externalIsDailyRewardOpen !== undefined ? externalIsDailyRewardOpen : internalIsDailyRewardOpen;
+  const setIsDailyRewardOpen = onSetIsDailyRewardOpen || setInternalIsDailyRewardOpen;
+
   const [dailyState, setDailyState] = useState(() => loadDailyRewardState());
+  const [adState, setAdState] = useState<AdLoadState>(() => unityAdsService.getAdState());
   const [isAdBonusLoading, setIsAdBonusLoading] = useState(false);
   const [adBonusClaimed, setAdBonusClaimed] = useState(false);
-  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [adFeedbackMessage, setAdFeedbackMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAdState((state, lastErr) => {
+      setAdState(state);
+      if (state === 'READY') {
+        setAdFeedbackMessage(null);
+      } else if (state === 'FAILED' && lastErr && isDailyRewardOpen) {
+        setAdFeedbackMessage(`Ad unavailable (${lastErr}). Tap button to retry.`);
+      }
+    });
+    return () => unsubscribe();
+  }, [isDailyRewardOpen]);
+
+  useEffect(() => {
+    if (isDailyRewardOpen) {
+      checkRewardedAdReady().then((ready) => {
+        if (!ready) {
+          loadRewardedAd();
+        }
+      });
+    }
+  }, [isDailyRewardOpen]);
 
   // Stats for active level
   const activeLevel = currentLevelNumber || highestLevel;
@@ -91,10 +133,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const snakeStage = useMemo(() => loadHighestSnakeStage(), []);
   const snakeDifficulty = useMemo(() => getSnakeDifficultyLabel(snakeStage), [snakeStage]);
 
+  const isAdBusy = isAdBonusLoading || adState === 'LOADING' || adState === 'SHOWING';
+
   const handleWatchAdBonusCoins = async () => {
-    if (isAdBonusLoading || adBonusClaimed) return;
+    if (isAdBonusLoading || adBonusClaimed || adState === 'SHOWING') return;
     sound.playTap();
+
+    // If ad previously failed, trigger a fresh load first
+    if (adState !== 'READY') {
+      setIsAdBonusLoading(true);
+      setAdFeedbackMessage('Loading advertisement...');
+      const loaded = await loadRewardedAd();
+      if (!loaded) {
+        setIsAdBonusLoading(false);
+        const err = unityAdsService.getLastError();
+        setAdFeedbackMessage(
+          err
+            ? `Advertisement unavailable (${err}). Tap to retry.`
+            : 'Advertisement unavailable right now. Please check your connection and tap to retry.'
+        );
+        return;
+      }
+    }
+
     setIsAdBonusLoading(true);
+    setAdFeedbackMessage(null);
 
     try {
       const result = await showRewardedAd();
@@ -104,12 +167,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         sound.playDailyClaim();
         onClaimDailyCoins(50);
         setAdBonusClaimed(true);
+        setAdFeedbackMessage(null);
+        // Allow using the feature again after 3.5 seconds when the next ad is preloaded
+        setTimeout(() => {
+          setAdBonusClaimed(false);
+        }, 3500);
       } else {
         sound.playBump();
+        setAdFeedbackMessage(result.message || 'Advertisement could not be completed. Tap to retry.');
       }
-    } catch {
+    } catch (e: any) {
       setIsAdBonusLoading(false);
       sound.playBump();
+      const raw = e?.message || unityAdsService.getLastError() || 'Unknown error';
+      setAdFeedbackMessage(`Advertisement failed (${raw}). Tap to retry.`);
     }
   };
 
@@ -182,28 +253,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <Edit2 className="w-3 h-3 text-slate-400" />
         </button>
 
-        {/* Right side: Coins + Install + Theme + Settings */}
+        {/* Right side: Coins + Theme + Settings */}
         <div className="flex items-center gap-1.5">
           {/* Coin Balance Pill */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-950 font-black text-xs shadow-2xs">
             <GoldCoin size={14} />
             <span className="tabular-nums">{coins.toLocaleString()}</span>
           </div>
-
-          {/* Install App / APK Button */}
-          <button
-            type="button"
-            onClick={() => {
-              sound.playTap();
-              setIsInstallModalOpen(true);
-            }}
-            aria-label="Install App / APK"
-            title="Install App on Phone / APK"
-            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 active:scale-95 shadow-2xs transition-all cursor-pointer text-xs font-black"
-          >
-            <Download className="w-3.5 h-3.5 text-blue-600" />
-            <span>Install</span>
-          </button>
 
           {/* Theme Palette Button */}
           {onOpenThemes && (
@@ -297,15 +353,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-radial from-blue-500/10 via-indigo-500/5 to-transparent rounded-full blur-2xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col items-center justify-center text-center">
-          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-slate-900 leading-none drop-shadow-xs">
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 leading-none drop-shadow-xs">
             ARROW MASTER
           </h1>
 
-          <span className="text-sm sm:text-base font-black uppercase tracking-[0.25em] text-blue-600 mt-2 drop-shadow-2xs block">
+          <span className="text-xs sm:text-sm font-black uppercase tracking-[0.25em] text-blue-600 mt-1.5 drop-shadow-2xs block">
             PUZZLE ESCAPE
           </span>
 
-          <div className="w-20 h-1 bg-gradient-to-r from-blue-500 via-indigo-600 to-amber-400 rounded-full mt-3.5 opacity-90 shadow-xs" />
+          <div className="w-16 h-1 bg-gradient-to-r from-blue-500 via-indigo-600 to-amber-400 rounded-full mt-2.5 opacity-90 shadow-xs" />
         </div>
       </main>
 
@@ -410,20 +466,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </button>
       </div>
 
-      {/* 6. BOTTOM BANNER AD */}
-      <div className="shrink-0 -mx-3 sm:-mx-4 -mb-3 sm:-mb-4 mt-1">
-        <BannerAd position="home-bottom" />
-      </div>
-
       {/* Profile Edit Modal */}
       {isEditingProfile && (
         <div
           role="dialog"
           aria-modal="true"
           aria-label="Edit Player Profile"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/75 p-4"
         >
-          <div className="w-full max-w-xs bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
+          <div className="w-full max-w-xs bg-white rounded-3xl p-5 shadow-2xl border border-slate-100">
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
               <h3 className="text-lg font-black text-slate-800 tracking-tight">
                 Player Profile
@@ -505,9 +556,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           role="dialog"
           aria-modal="true"
           aria-label="Daily Reward Modal"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/75 p-4"
         >
-          <div className="w-full max-w-xs bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95 duration-150">
+          <div className="w-full max-w-xs bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 text-center">
             <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto mb-3 shadow-inner">
               <Gift className="w-8 h-8" />
             </div>
@@ -544,29 +595,43 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </button>
 
               {/* Optional Bonus Coins Rewarded Ad */}
+              {adFeedbackMessage && (
+                <div
+                  role="alert"
+                  className="w-full p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold flex items-center justify-center gap-1.5 text-center"
+                >
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>{adFeedbackMessage}</span>
+                </div>
+              )}
+
               {!adBonusClaimed ? (
                 <button
                   type="button"
-                  disabled={isAdBonusLoading}
+                  disabled={isAdBusy}
                   onClick={handleWatchAdBonusCoins}
                   data-testid="daily-ad-bonus-btn"
-                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-md shadow-blue-500/25 active:scale-98 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-md shadow-blue-500/25 active:scale-98 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-65 disabled:cursor-wait"
                 >
-                  {isAdBonusLoading ? (
+                  {isAdBusy ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Loading Ad...</span>
+                      <span>Loading advertisement...</span>
                     </>
                   ) : (
                     <>
                       <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>WATCH AD FOR +50 COINS</span>
+                      <span>
+                        {adState === 'FAILED'
+                          ? 'RETRY AD FOR +50 COINS'
+                          : 'WATCH AD FOR +50 COINS'}
+                      </span>
                       <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                     </>
                   )}
                 </button>
               ) : (
-                <div className="w-full py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[11px] flex items-center justify-center gap-1.5 animate-in fade-in">
+                <div className="w-full py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[11px] flex items-center justify-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                   <span>+50 Bonus Coins Claimed!</span>
                 </div>
@@ -583,12 +648,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         </div>
       )}
-
-      {/* Install App / APK Modal */}
-      <InstallModal
-        isOpen={isInstallModalOpen}
-        onClose={() => setIsInstallModalOpen(false)}
-      />
     </div>
   );
 };

@@ -99,13 +99,13 @@ export const LegalDocumentViewer: React.FC<LegalDocumentViewerProps> = ({
             <section className="space-y-2">
               <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-1.5">
                 <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-[10px] font-black">3</span>
-                <span>Google AdMob Integration & Advertising Disclosures</span>
+                <span>Unity Ads Integration & Advertising Disclosures</span>
               </h4>
               <p>
-                To offer <strong>Arrow Master : Puzzle Escape</strong> as a free application, we integrate the <strong>Google Mobile Ads SDK (Google AdMob / Google LLC)</strong>.
+                To offer <strong>Arrow Master : Puzzle Escape</strong> as a free application, we integrate the <strong>Unity Ads Android SDK (Unity Technologies)</strong>.
               </p>
               <p>
-                Google AdMob may automatically collect and process certain technical data in accordance with Google's Privacy Policy, including:
+                Unity Ads may automatically collect and process certain technical data in accordance with Unity's Privacy Policy, including:
               </p>
               <ul className="list-disc pl-5 space-y-1 text-slate-500 font-medium">
                 <li>Advertising identifiers (such as Google Advertising ID / GAID or Apple IDFA).</li>
@@ -114,7 +114,7 @@ export const LegalDocumentViewer: React.FC<LegalDocumentViewerProps> = ({
                 <li>Ad interaction metrics (impressions, completion callbacks, clicks).</li>
               </ul>
               <p>
-                This technical data is processed directly by Google AdMob to deliver relevant ads, prevent ad fraud, and measure ad performance.
+                This technical data is processed directly by Unity Ads to deliver relevant ads, prevent ad fraud, and measure ad performance.
               </p>
             </section>
 
@@ -249,13 +249,13 @@ export const LegalDocumentViewer: React.FC<LegalDocumentViewerProps> = ({
                 Advertising Information
               </span>
               <p className="text-xs font-semibold leading-normal text-amber-900">
-                Google AdMob SDK Disclosure
+                Unity Ads SDK Disclosure
               </p>
             </div>
 
             <section className="space-y-2">
               <p>
-                This application uses Google AdMob to deliver banner and optional rewarded video ads.
+                This application uses the official Unity Ads SDK to deliver interstitial and optional rewarded video ads.
               </p>
               <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-950">
                 <p className="text-[11px] font-bold text-emerald-800">

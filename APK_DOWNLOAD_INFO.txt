@@ -1,0 +1,25 @@
+===================================================================
+ARROW MASTER : PUZZLE ESCAPE - ANDROID APK DOWNLOAD INFORMATION
+===================================================================
+
+APK File Information:
+- File Name: arrow-master.apk
+- Package Name: com.vikashgamboge.arrowmaster
+- APK Version: 15.0 (versionCode 15)
+- File Size: ~59 MB (61,541,948 bytes)
+- Target Android SDK: Android 36 (Android 14/15+)
+- Minimum Android SDK: Android 24 (Android 7.0+)
+
+Project File Locations:
+1. /arrow-master.apk (Project Root)
+2. /public/arrow-master.apk (Public Folder)
+3. /dist/arrow-master.apk (Vite Dist Production Build)
+4. /android/app/build/outputs/apk/debug/app-debug.apk (Android Gradle Output)
+
+Direct Mobile Browser Download Links:
+- https://ais-pre-iakiwibz74tafmfgo64rc4-238813370115.asia-east1.run.app/download
+- https://ais-pre-iakiwibz74tafmfgo64rc4-238813370115.asia-east1.run.app/arrow-master.apk
+
+Why binary .apk files are filtered in AI Studio text editor:
+Large binary files (>10MB) are filtered from text-editor search indexes in web IDE environments to prevent text editor freezing. The file exists in all project folders listed above and is directly downloadable via HTTP stream.
+===================================================================

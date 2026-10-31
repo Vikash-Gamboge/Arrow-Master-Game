@@ -9,6 +9,8 @@ class SoundManager {
   public enabled = true;         // SFX enabled
   public musicEnabled = true;    // Background Music enabled
   private isMusicPlaying = false;
+  private wasPlayingBeforeBackground = false;
+  private isAppInBackground = false;
 
   // Master Gain & Filter Nodes for Background Music
   private musicMasterGain: GainNode | null = null;
@@ -66,9 +68,13 @@ class SoundManager {
    * If music is ALREADY active, seamlessly continues without abrupt restarts or gaps.
    */
   startMusic() {
+    if (this.isAppInBackground || !this.musicEnabled) return;
     this.musicEnabled = true;
     this.initContext();
     if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
 
     // Ensure master gain and filter nodes for music exist
     if (!this.musicMasterGain) {
@@ -192,10 +198,9 @@ class SoundManager {
   }
 
   /**
-   * Smoothly stops background music with a gentle fade out
+   * Internal helper to halt music scheduler and fade out master gain
    */
-  stopMusic() {
-    this.musicEnabled = false;
+  private pauseMusicInternal(fadeSeconds = 0.2) {
     this.isMusicPlaying = false;
 
     if (typeof window !== 'undefined' && this.schedulerTimer) {
@@ -207,8 +212,58 @@ class SoundManager {
       try {
         const t = this.ctx.currentTime;
         this.musicMasterGain.gain.cancelScheduledValues(t);
-        this.musicMasterGain.gain.linearRampToValueAtTime(0.0001, t + 0.4);
+        this.musicMasterGain.gain.setValueAtTime(this.musicMasterGain.gain.value || 0.0001, t);
+        this.musicMasterGain.gain.linearRampToValueAtTime(0.0001, t + fadeSeconds);
       } catch {}
+    }
+  }
+
+  /**
+   * Smoothly stops background music with a gentle fade out
+   */
+  stopMusic() {
+    this.musicEnabled = false;
+    this.wasPlayingBeforeBackground = false;
+    this.pauseMusicInternal(0.4);
+  }
+
+  /**
+   * Handles app entering background or switching away.
+   * Immediately silences and halts background music and Web Audio processing.
+   */
+  handleBackground() {
+    if (this.isAppInBackground) return;
+    this.isAppInBackground = true;
+
+    if (this.isMusicPlaying && this.musicEnabled) {
+      this.wasPlayingBeforeBackground = true;
+    }
+
+    this.pauseMusicInternal(0.08);
+
+    if (this.ctx && this.ctx.state === 'running') {
+      this.ctx.suspend().catch(() => {});
+    }
+  }
+
+  /**
+   * Handles app returning to active foreground.
+   * Resumes Web Audio and background music ONLY if it was previously playing
+   * and music is currently enabled in settings.
+   */
+  handleForeground() {
+    if (!this.isAppInBackground) return;
+    this.isAppInBackground = false;
+
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+
+    if (this.wasPlayingBeforeBackground && this.musicEnabled) {
+      this.wasPlayingBeforeBackground = false;
+      this.startMusic();
+    } else {
+      this.wasPlayingBeforeBackground = false;
     }
   }
 

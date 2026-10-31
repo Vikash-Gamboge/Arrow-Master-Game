@@ -10,6 +10,7 @@ interface ArrowBoardProps {
   animatingArrowId: string | null;
   animatingDirection: Direction | null;
   collidingArrowId: string | null;
+  blockingArrowId?: string | null;
   hintedArrowId: string | null;
   showGridDots: boolean;
   magnifierActive: boolean;
@@ -83,6 +84,7 @@ export const ArrowBoard: React.FC<ArrowBoardProps> = ({
   animatingArrowId,
   animatingDirection,
   collidingArrowId,
+  blockingArrowId = null,
   hintedArrowId,
   showGridDots,
   magnifierActive,
@@ -169,14 +171,14 @@ export const ArrowBoard: React.FC<ArrowBoardProps> = ({
     };
   }, [isDraggingLens]);
 
-  // Proportional stroke width
+  // Proportional bold stroke width matching reference puzzle images
   const STROKE_WIDTH = useMemo(() => {
-    return Math.max(0.12, (3.5 / 380) * vbWidth);
-  }, [vbWidth]);
+    return Math.max(0.20, Math.min(0.28, 2.5 / Math.max(8, gridWidth)));
+  }, [gridWidth]);
 
   // Classic Arrow Head dimensions
-  const HEAD_LEN = STROKE_WIDTH * 2.55;
-  const HEAD_HALF_WIDTH = STROKE_WIDTH * 1.36;
+  const HEAD_LEN = STROKE_WIDTH * 2.2;
+  const HEAD_HALF_WIDTH = STROKE_WIDTH * 1.35;
   const HITBOX_WIDTH = Math.max(0.75, 0.055 * vbWidth);
   const DOT_RADIUS = Math.max(0.045, (1.8 / 380) * vbWidth);
 
@@ -242,6 +244,7 @@ export const ArrowBoard: React.FC<ArrowBoardProps> = ({
     return sorted.map((arrow, idx) => {
       const isAnimating = arrow.id === animatingArrowId;
       const isColliding = arrow.id === collidingArrowId;
+      const isBlocking = arrow.id === blockingArrowId;
       const isHinted = arrow.id === hintedArrowId;
       const isSnakePiece = isSnakeMode || arrow.id.startsWith('snake_');
 
@@ -285,10 +288,12 @@ export const ArrowBoard: React.FC<ArrowBoardProps> = ({
             ? 180
             : 0;
 
-        const snakeWidth = STROKE_WIDTH * 2.2;
-        const outerWidth = STROKE_WIDTH * 2.9;
-        const headRadiusX = STROKE_WIDTH * 2.4;
-        const headRadiusY = STROKE_WIDTH * 2.0;
+        // Dedicated proportional scale for 3D snakes so adjacent grid cells (1.0 apart) never overlap
+        const snakeUnit = Math.max(0.115, Math.min(0.14, 1.35 / Math.max(8, gridWidth)));
+        const snakeWidth = snakeUnit * 2.1;
+        const outerWidth = snakeUnit * 2.65;
+        const headRadiusX = snakeUnit * 2.15;
+        const headRadiusY = snakeUnit * 1.8;
 
         return (
           <g
@@ -329,16 +334,16 @@ export const ArrowBoard: React.FC<ArrowBoardProps> = ({
               />
             )}
 
-            {/* Neon Glow for Hinted Snake */}
-            {isHinted && (
+            {/* Neon Glow for Hinted or Blocking Snake */}
+            {(isHinted || isBlocking) && (
               <path
                 d={snakePath}
                 fill="none"
-                stroke="#38BDF8"
+                stroke={isBlocking ? '#F59E0B' : '#38BDF8'}
                 strokeWidth={outerWidth + 0.16}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                opacity="0.75"
+                opacity="0.8"
                 style={{ pointerEvents: 'none' }}
               />
             )}
@@ -508,11 +513,13 @@ export const ArrowBoard: React.FC<ArrowBoardProps> = ({
 
       const color = isColliding
         ? '#EF4444'
+        : isBlocking
+        ? '#F59E0B'
         : isHinted
         ? theme?.arrowHintColor || '#0284C7'
-        : theme?.arrowShaftColor || '#0F1935';
+        : arrow.color || theme?.arrowShaftColor || '#0F1935';
 
-      const glowColor = theme?.arrowGlowColor || '#38BDF8';
+      const glowColor = isBlocking ? '#FBBF24' : theme?.arrowGlowColor || '#38BDF8';
 
       return (
         <g
@@ -530,7 +537,7 @@ export const ArrowBoard: React.FC<ArrowBoardProps> = ({
               : !isAnimating
               ? 'hover:opacity-85 duration-150'
               : ''
-          } ${isHinted ? 'animate-pulse-glow' : ''}`}
+          } ${isHinted || isBlocking ? 'animate-pulse-glow' : ''}`}
         >
           {/* Hitbox */}
           {!isInsideMagnifier && !isAnimating && (
@@ -545,17 +552,17 @@ export const ArrowBoard: React.FC<ArrowBoardProps> = ({
             />
           )}
 
-          {/* Neon Glow for Hinted Arrow */}
-          {isHinted && (
+          {/* Neon Glow for Hinted or Blocking Arrow */}
+          {(isHinted || isBlocking) && (
             <>
               <path
                 d={shaftPath}
                 fill="none"
                 stroke={glowColor}
-                strokeWidth={STROKE_WIDTH + 0.12}
+                strokeWidth={STROKE_WIDTH + 0.14}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                opacity="0.65"
+                opacity="0.7"
                 style={{ pointerEvents: 'none' }}
               />
               <polygon
@@ -564,7 +571,7 @@ export const ArrowBoard: React.FC<ArrowBoardProps> = ({
                 stroke={glowColor}
                 strokeWidth="0.06"
                 strokeLinejoin="round"
-                opacity="0.65"
+                opacity="0.7"
                 style={{ pointerEvents: 'none' }}
               />
             </>

@@ -205,17 +205,32 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
           </div>
         )}
 
-        {/* APK build note & direct GitHub Release Download */}
+        {/* Direct APK Download Button (Hosted inside project) */}
         <div className="mt-3 pt-3 border-t border-slate-100 text-center space-y-2">
+          <a
+            href="/download"
+            download="arrow-master.apk"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => sound.playTap()}
+            className="w-full py-3 px-3 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer touch-manipulation active:scale-98 transition-all"
+          >
+            <Download className="w-4 h-4 animate-bounce" />
+            <span>DOWNLOAD APK DIRECTLY (59 MB)</span>
+          </a>
+          <p className="text-[10px] text-slate-500 font-medium">
+            Directly compiled Android APK package ready to install on your phone.
+          </p>
+
           <a
             href="https://github.com/Vikash-Gamboge/Arrow-Master-Game/releases/latest/download/app-debug.apk"
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => sound.playTap()}
-            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-md flex items-center justify-center gap-2 cursor-pointer touch-manipulation"
+            className="w-full py-1.5 px-2 text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            <Download className="w-4 h-4" />
-            <span>DOWNLOAD .APK FILE DIRECTLY</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Alternative: GitHub Releases Download</span>
           </a>
 
           <details className="text-left group">

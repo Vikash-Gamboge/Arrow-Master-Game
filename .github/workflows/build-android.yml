@@ -45,8 +45,10 @@ jobs:
           java -version
           echo "JAVA_HOME: $JAVA_HOME"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Configure Android SDK
+        run: |
+          echo "Using pre-installed Android SDK at $ANDROID_HOME"
+          yes | sdkmanager --licenses 2>/dev/null || true
 
       - name: Generate clean Capacitor Android project & sync
         run: |

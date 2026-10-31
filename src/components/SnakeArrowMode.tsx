@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   Heart,
@@ -7,29 +7,40 @@ import {
   Play,
   Trophy,
   Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 import {
   generateSnakeArrowStage,
+  preloadSnakeArrowStage,
   loadHighestSnakeStage,
   saveHighestSnakeStage,
   getSnakeDifficultyLabel,
 } from '../game/snakeArrowLogic';
 import { ArrowData, checkArrowEscape, getFreeArrows } from '../game/logic';
 import { ArrowBoard } from './ArrowBoard';
+import { GoldCoin } from './GoldCoin';
 import { GameTheme } from '../game/theme';
 import { sound } from '../game/sound';
 import { GameOverModal } from './GameOverModal';
 import { FreeHintsModal } from './FreeHintsModal';
-import { BannerAd } from './BannerAd';
+import {
+  recordLevelCompletedForAds,
+  canShowInterstitialAd,
+  showInterstitialAd,
+  showRewardedAd,
+  preloadRewardedAd,
+} from '../game/adService';
 
 interface SnakeArrowModeProps {
   theme: GameTheme;
+  coins: number;
   onBackToHome: () => void;
   onAwardCoins: (coins: number) => void;
 }
 
 export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
   theme,
+  coins,
   onBackToHome,
   onAwardCoins,
 }) => {
@@ -39,15 +50,25 @@ export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
   const [isStageComplete, setIsStageComplete] = useState<boolean>(false);
   const [isGameOver, setIsGameOver] = useState<boolean>(false);
   const [isFreeHintsModalOpen, setIsFreeHintsModalOpen] = useState<boolean>(false);
+  const [bonusCoinsDoubled, setBonusCoinsDoubled] = useState<boolean>(false);
+  const [isDoublingAdLoading, setIsDoublingAdLoading] = useState<boolean>(false);
+  const [adFeedbackMessage, setAdFeedbackMessage] = useState<string | null>(null);
 
   const stageData = useMemo(() => generateSnakeArrowStage(currentStage), [currentStage]);
   const [arrows, setArrows] = useState<ArrowData[]>(stageData.arrows);
   const difficultyLabel = useMemo(() => getSnakeDifficultyLabel(currentStage), [currentStage]);
 
+  // Pre-cache next stage and preload rewarded ad in the background
+  useEffect(() => {
+    preloadSnakeArrowStage(currentStage + 1);
+    preloadRewardedAd();
+  }, [currentStage]);
+
   // Animations
   const [animatingArrowId, setAnimatingArrowId] = useState<string | null>(null);
   const [animatingDirection, setAnimatingDirection] = useState<ArrowData['dir'] | null>(null);
   const [collidingArrowId, setCollidingArrowId] = useState<string | null>(null);
+  const [blockingArrowId, setBlockingArrowId] = useState<string | null>(null);
   const [hintedArrowId, setHintedArrowId] = useState<string | null>(null);
   const isResolvingRef = useRef(false);
 
@@ -59,8 +80,10 @@ export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
     setLives(3);
     setIsStageComplete(false);
     setIsGameOver(false);
+    setAdFeedbackMessage(null);
     setAnimatingArrowId(null);
     setCollidingArrowId(null);
+    setBlockingArrowId(null);
     setHintedArrowId(null);
     isResolvingRef.current = false;
   }, []);
@@ -97,6 +120,7 @@ export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
               setTimeout(() => {
                 sound.playWin();
                 onAwardCoins(30);
+                recordLevelCompletedForAds();
                 saveHighestSnakeStage(currentStage + 1);
                 setIsStageComplete(true);
                 isResolvingRef.current = false;
@@ -112,6 +136,7 @@ export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
       } else {
         sound.playBump();
         setCollidingArrowId(arrowId);
+        setBlockingArrowId(check.blockerId || null);
 
         setLives((prev) => {
           const next = Math.max(0, prev - 1);
@@ -132,7 +157,8 @@ export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
 
         setTimeout(() => {
           setCollidingArrowId(null);
-        }, 360);
+          setBlockingArrowId(null);
+        }, 480);
       }
     },
     [arrows, isGameOver, isStageComplete, animatingArrowId, collidingArrowId, hintedArrowId, currentStage, onAwardCoins]
@@ -153,13 +179,45 @@ export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
     }
   };
 
+  const handleDoubleSnakeCoins = async () => {
+    if (bonusCoinsDoubled || isDoublingAdLoading) return;
+    sound.playTap();
+    setIsDoublingAdLoading(true);
+    setAdFeedbackMessage(null);
+
+    try {
+      const result = await showRewardedAd();
+      setIsDoublingAdLoading(false);
+
+      if (result.rewardGranted) {
+        sound.playWin();
+        setBonusCoinsDoubled(true);
+        onAwardCoins(30);
+      } else {
+        sound.playBump();
+        setAdFeedbackMessage(result.message || 'Ad is currently unavailable. You can continue with your +30 Coins.');
+      }
+    } catch {
+      setIsDoublingAdLoading(false);
+      sound.playBump();
+      setAdFeedbackMessage('Ad is currently unavailable. You can continue with your +30 Coins.');
+    }
+  };
+
   const handleRestart = () => {
     sound.playTap();
+    setBonusCoinsDoubled(false);
+    setAdFeedbackMessage(null);
     loadStage(currentStage);
   };
 
   const handleNextStage = () => {
     sound.playTap();
+    if (canShowInterstitialAd()) {
+      showInterstitialAd();
+    }
+    setBonusCoinsDoubled(false);
+    setAdFeedbackMessage(null);
     loadStage(currentStage + 1);
   };
 
@@ -170,63 +228,71 @@ export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
       className="h-full w-full flex flex-col justify-between p-3 select-none overflow-hidden"
     >
       {/* 1. Top HUD */}
-      <header className="shrink-0 flex items-center justify-between pb-2 border-b border-slate-200/80">
-        <button
-          type="button"
-          onClick={() => {
-            sound.playTap();
-            onBackToHome();
-          }}
-          aria-label="Back to Home"
-          className="p-2 rounded-full bg-white border border-slate-200 shadow-2xs hover:bg-slate-50 active:scale-95 transition-all text-slate-700 cursor-pointer"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
+      <header className="shrink-0 flex flex-col gap-1.5 pb-2 border-b border-slate-200/80">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => {
+              sound.playTap();
+              onBackToHome();
+            }}
+            aria-label="Back to Home"
+            className="p-2 rounded-full bg-white border border-slate-200 shadow-2xs hover:bg-slate-50 active:scale-95 transition-all text-slate-700 cursor-pointer"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
 
-        <div className="text-center">
-          <div className="flex items-center justify-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <h2 className="text-base font-black tracking-tight text-slate-900 leading-tight">
-              Snake Arrow
-            </h2>
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <h2 className="text-base font-black tracking-tight text-slate-900 leading-tight">
+                Snake Arrow
+              </h2>
+            </div>
+            <div className="flex items-center justify-center gap-1.5 mt-0.5">
+              <span className="text-[11px] font-black text-slate-800">
+                Stage {currentStage}
+              </span>
+              <span
+                className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${
+                  difficultyLabel === 'EASY'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : difficultyLabel === 'NORMAL'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : difficultyLabel === 'HARD'
+                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : difficultyLabel === 'VERY HARD'
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : 'bg-purple-50 text-purple-700 border-purple-200'
+                }`}
+              >
+                {difficultyLabel}
+              </span>
+              <span className="text-[10px] font-bold text-slate-400 tabular-nums">
+                · {arrows.length} left
+              </span>
+            </div>
           </div>
-          <div className="flex items-center justify-center gap-1.5 mt-0.5">
-            <span className="text-[11px] font-black text-slate-800">
-              Stage {currentStage}
-            </span>
-            <span
-              className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${
-                difficultyLabel === 'EASY'
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : difficultyLabel === 'NORMAL'
-                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                  : difficultyLabel === 'HARD'
-                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                  : difficultyLabel === 'VERY HARD'
-                  ? 'bg-rose-50 text-rose-700 border-rose-200'
-                  : 'bg-purple-50 text-purple-700 border-purple-200'
-              }`}
-            >
-              {difficultyLabel}
-            </span>
-            <span className="text-[10px] font-bold text-slate-400 tabular-nums">
-              · {arrows.length} left
-            </span>
-          </div>
-        </div>
 
-        {/* Lives Counter */}
-        <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-slate-200 shadow-2xs">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Heart
-              key={`snake-life-${i}`}
-              className={`w-4 h-4 transition-transform ${
-                i < lives
-                  ? 'text-rose-500 fill-rose-500 scale-100'
-                  : 'text-slate-300 fill-slate-200 scale-90'
-              }`}
-            />
-          ))}
+          {/* Right side: Coins + Lives */}
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-950 font-black text-xs shadow-2xs">
+              <GoldCoin size={13} />
+              <span className="tabular-nums">{coins.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center gap-0.5 px-2 py-1 rounded-full bg-white border border-slate-200 shadow-2xs">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Heart
+                  key={`snake-life-${i}`}
+                  className={`w-3.5 h-3.5 transition-transform ${
+                    i < lives
+                      ? 'text-rose-500 fill-rose-500 scale-100'
+                      : 'text-slate-300 fill-slate-200 scale-90'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </header>
 
@@ -239,8 +305,9 @@ export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
           animatingArrowId={animatingArrowId}
           animatingDirection={animatingDirection}
           collidingArrowId={collidingArrowId}
+          blockingArrowId={blockingArrowId}
           hintedArrowId={hintedArrowId}
-          showGridDots={true}
+          showGridDots={false}
           magnifierActive={false}
           onArrowClick={handleArrowClick}
           theme={theme}
@@ -276,9 +343,9 @@ export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/75 p-4"
         >
-          <div className="w-full max-w-xs bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95">
+          <div className="w-full max-w-xs bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 text-center">
             <div className="w-16 h-16 rounded-3xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3 shadow-inner">
               <Trophy className="w-8 h-8 fill-emerald-500" />
             </div>
@@ -290,12 +357,40 @@ export const SnakeArrowMode: React.FC<SnakeArrowModeProps> = ({
               All winding snake arrows freed cleanly.
             </p>
 
-            <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200 mb-5 flex items-center justify-center gap-2 text-emerald-800 font-black text-sm">
+            <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200 mb-4 flex items-center justify-center gap-2 text-emerald-800 font-black text-sm">
               <Sparkles className="w-4 h-4 text-emerald-600" />
-              <span>+30 Coins Earned!</span>
+              <span>+{bonusCoinsDoubled ? 60 : 30} Coins Earned!</span>
             </div>
 
+            {adFeedbackMessage && (
+              <div
+                role="alert"
+                className="w-full mb-3 p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold flex items-center justify-center gap-1.5 text-center"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>{adFeedbackMessage}</span>
+              </div>
+            )}
+
             <div className="flex flex-col gap-2">
+              {/* Optional Double Coins Rewarded Ad */}
+              {!bonusCoinsDoubled ? (
+                <button
+                  type="button"
+                  disabled={isDoublingAdLoading}
+                  onClick={handleDoubleSnakeCoins}
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs uppercase tracking-wider shadow-md shadow-amber-500/25 active:scale-98 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-75"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>{isDoublingAdLoading ? 'LOADING AD...' : 'WATCH AD TO DOUBLE (+30 COINS)'}</span>
+                </button>
+              ) : (
+                <div className="w-full py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Doubled! +30 Extra Coins Added</span>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={handleNextStage}

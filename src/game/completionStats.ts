@@ -113,10 +113,22 @@ export function getLevelCompletionStats(levelNumber: number): LevelCompletionSta
 }
 
 /**
- * Returns simplified category 'EASY' | 'NORMAL' | 'HARD' based on level number and metrics
+ * Returns real puzzle difficulty category 'EASY' | 'MEDIUM' | 'HARD' | 'EXPERT'
+ * based on level number and blocking complexity metrics.
  */
-export function getSimplifiedDifficulty(levelNumber: number): 'EASY' | 'NORMAL' | 'HARD' {
-  if (levelNumber <= 6) return 'EASY';
-  if (levelNumber <= 25) return 'NORMAL';
-  return 'HARD';
+export function getSimplifiedDifficulty(
+  levelNumber: number,
+  difficultyScore?: number
+): 'EASY' | 'MEDIUM' | 'HARD' | 'EXPERT' {
+  if (difficultyScore !== undefined && difficultyScore > 0) {
+    if (difficultyScore <= 145 && levelNumber <= 8) return 'EASY';
+    if (difficultyScore <= 255 && levelNumber <= 25) return 'MEDIUM';
+    if (difficultyScore <= 425 && levelNumber <= 60) return 'HARD';
+    if (levelNumber > 60 || difficultyScore > 425) return 'EXPERT';
+  }
+  if (levelNumber <= 8) return 'EASY';
+  if (levelNumber <= 25) return 'MEDIUM';
+  if (levelNumber <= 60) return 'HARD';
+  return 'EXPERT';
 }
+

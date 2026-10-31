@@ -18,7 +18,6 @@ import {
   preloadDailyMission,
 } from '../game/dailyChallenge';
 import { sound } from '../game/sound';
-import { BannerAd } from './BannerAd';
 
 interface DailyChallengeScreenProps {
   onBack: () => void;
@@ -121,10 +120,7 @@ export const DailyChallengeScreen: React.FC<DailyChallengeScreenProps> = ({
     if (isStarting) return;
     sound.playTap();
     setIsStarting(true);
-    // Fast responsive transition: ensures immediate button response before switching screens
-    requestAnimationFrame(() => {
-      onPlayMission(selectedDateStr);
-    });
+    onPlayMission(selectedDateStr);
   };
 
   return (
@@ -288,19 +284,9 @@ export const DailyChallengeScreen: React.FC<DailyChallengeScreenProps> = ({
           onClick={handleStartMission}
           className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-sm uppercase tracking-wider shadow-lg shadow-blue-500/25 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer touch-manipulation disabled:opacity-85"
         >
-          {isStarting ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>STARTING...</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4 fill-current" />
-              <span>{isSelectedCompleted ? 'REPLAY MISSION' : 'CONTINUE'}</span>
-            </>
-          )}
+          <Play className="w-4 h-4 fill-current" />
+          <span>{isSelectedCompleted ? 'REPLAY MISSION' : 'CONTINUE'}</span>
         </button>
-        <BannerAd position="home-bottom" className="mt-1" />
       </footer>
     </div>
   );

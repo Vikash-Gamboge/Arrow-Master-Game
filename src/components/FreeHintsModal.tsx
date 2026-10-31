@@ -1,6 +1,13 @@
-import React, { useState } from 'react';
-import { Lightbulb, Play, X, Loader2, Sparkles, AlertCircle } from 'lucide-react';
-import { showRewardedAd, isRewardedAdReady, AdLoadState } from '../game/adService';
+import React, { useState, useEffect } from 'react';
+import { Lightbulb, Play, X, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
+import {
+  showRewardedAd,
+  loadRewardedAd,
+  checkRewardedAdReady,
+  subscribeToAdState,
+  AdLoadState,
+  unityAdsService,
+} from '../game/adService';
 import { sound } from '../game/sound';
 
 interface FreeHintsModalProps {
@@ -12,13 +19,33 @@ export const FreeHintsModal: React.FC<FreeHintsModalProps> = ({
   onRewardSuccess,
   onClose,
 }) => {
+  const [adState, setAdState] = useState<AdLoadState>(() => unityAdsService.getAdState());
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const isReady = isRewardedAdReady();
+  useEffect(() => {
+    const unsubscribe = subscribeToAdState((state, lastErr) => {
+      setAdState(state);
+      if (state === 'READY') {
+        setErrorMessage(null);
+      } else if (state === 'FAILED' && lastErr) {
+        setErrorMessage(`Ad unavailable (${lastErr}). Tap button to retry.`);
+      }
+    });
+
+    checkRewardedAdReady().then((ready) => {
+      if (!ready) {
+        loadRewardedAd();
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const isBusy = isLoading || adState === 'LOADING' || adState === 'SHOWING';
 
   const handleWatchAd = async () => {
-    if (isLoading) return;
+    if (isBusy) return;
     sound.playTap();
     setIsLoading(true);
     setErrorMessage(null);
@@ -36,10 +63,11 @@ export const FreeHintsModal: React.FC<FreeHintsModalProps> = ({
           result.message || 'Rewarded ad could not be completed. Please try again.'
         );
       }
-    } catch {
+    } catch (e: any) {
       setIsLoading(false);
       sound.playBump();
-      setErrorMessage('Rewarded ad is currently unavailable. Please try again.');
+      const raw = e?.message || unityAdsService.getLastError() || 'Unknown error';
+      setErrorMessage(`Rewarded ad failed (${raw}). Please try again.`);
     }
   };
 
@@ -48,9 +76,9 @@ export const FreeHintsModal: React.FC<FreeHintsModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="hints-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 backdrop-blur-xs p-4 animate-in fade-in duration-150 select-none"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/75 p-4 select-none"
     >
-      <div className="w-full max-w-xs bg-white rounded-3xl p-6 text-center shadow-2xl border border-slate-100 flex flex-col items-center animate-in zoom-in-95 duration-150 relative">
+      <div className="w-full max-w-xs bg-white rounded-3xl p-6 text-center shadow-2xl border border-slate-100 flex flex-col items-center relative">
         {/* Close Button */}
         <button
           type="button"
@@ -86,7 +114,7 @@ export const FreeHintsModal: React.FC<FreeHintsModalProps> = ({
         {errorMessage && (
           <div
             role="alert"
-            className="w-full mb-3 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2 animate-in fade-in text-left"
+            className="w-full mb-3 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2 text-left"
           >
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
             <span>{errorMessage}</span>
@@ -98,20 +126,18 @@ export const FreeHintsModal: React.FC<FreeHintsModalProps> = ({
           {/* Watch Ad Button */}
           <button
             type="button"
-            disabled={isLoading || !isReady}
+            disabled={isBusy}
             onClick={handleWatchAd}
             className={`w-full py-3.5 px-4 rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer touch-manipulation ${
-              isLoading
+              isBusy
                 ? 'bg-amber-400 text-white cursor-wait'
-                : !isReady
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 : 'bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white shadow-amber-500/30'
             }`}
           >
-            {isLoading ? (
+            {isBusy ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Loading Ad...</span>
+                <span>Loading advertisement...</span>
               </>
             ) : (
               <>

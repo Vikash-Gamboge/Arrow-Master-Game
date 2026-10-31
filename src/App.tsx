@@ -51,13 +51,14 @@ import { LevelSelectModal } from './components/LevelSelectModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ThemeModal } from './components/ThemeModal';
 import { FreeHintsModal } from './components/FreeHintsModal';
-import { BannerAd } from './components/BannerAd';
 import { DebugPanel } from './components/DebugPanel';
 import { DailyChallengeScreen } from './components/DailyChallengeScreen';
 import { SnakeArrowMode } from './components/SnakeArrowMode';
-import { generateDailyMission, markDailyDateCompleted } from './game/dailyChallenge';
+import { generateDailyMission, preloadDailyMission, markDailyDateCompleted } from './game/dailyChallenge';
+import { preloadSnakeArrowStage, loadHighestSnakeStage } from './game/snakeArrowLogic';
 import { LegalDocumentViewer, LegalPageType } from './components/legal/LegalDocumentViewer';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, LogOut } from 'lucide-react';
+import { App as CapApp } from '@capacitor/app';
 
 export type ScreenMode = 'splash' | 'home' | 'arrow-puzzle' | 'daily-challenge' | 'snake-arrow';
 
@@ -106,6 +107,13 @@ export default function App() {
   // Leave level confirmation dialog
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
+  // Android hardware back button exit game confirmation dialog
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  // Home screen modal states
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isDailyRewardOpen, setIsDailyRewardOpen] = useState(false);
+
   // Check URL query parameters for ?level=X or ?debug=1
   const initialLevelNumber = useMemo(() => {
     if (typeof window !== 'undefined') {
@@ -140,7 +148,7 @@ export default function App() {
 
   const [lives, setLives] = useState<number>(3);
   const [hintsAvailable, setHintsAvailable] = useState<number>(3);
-  const [showGridDots, setShowGridDots] = useState<boolean>(true);
+  const [showGridDots, setShowGridDots] = useState<boolean>(false);
   const [magnifierActive, setMagnifierActive] = useState<boolean>(false);
 
   // Performance tracking for Level Complete stats (Reference Image 1)
@@ -153,6 +161,7 @@ export default function App() {
   const [animatingArrowId, setAnimatingArrowId] = useState<string | null>(null);
   const [animatingDirection, setAnimatingDirection] = useState<ArrowData['dir'] | null>(null);
   const [collidingArrowId, setCollidingArrowId] = useState<string | null>(null);
+  const [blockingArrowId, setBlockingArrowId] = useState<string | null>(null);
   const [hintedArrowId, setHintedArrowId] = useState<string | null>(null);
   const isResolvingMoveRef = useRef<boolean>(false);
 
@@ -176,7 +185,7 @@ export default function App() {
   const [vibrationEnabled, setVibrationEnabled] = useState<boolean>(() => loadVibrationEnabled());
   const [musicEnabled, setMusicEnabled] = useState<boolean>(() => loadMusicEnabled());
 
-  // Record level start for statistics & preload Google AdMob Rewarded Ad
+  // Record level start for statistics & preload Unity Ads Rewarded Ad
   useEffect(() => {
     if (currentScreen === 'arrow-puzzle') {
       if (!activeDailyDate) {
@@ -224,6 +233,197 @@ export default function App() {
     };
   }, [musicEnabled]);
 
+  // Proactively warm in-memory puzzle cache for 0ms instantaneous opening
+  useEffect(() => {
+    try {
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      preloadDailyMission(todayStr);
+      preloadSnakeArrowStage(loadHighestSnakeStage());
+    } catch {}
+  }, []);
+
+  // Stop background music when app goes to background / switches apps, and resume on foreground
+  useEffect(() => {
+    // 1. Capacitor native app state listener
+    const appStatePromise = CapApp.addListener('appStateChange', (state) => {
+      if (!state.isActive) {
+        sound.handleBackground();
+      } else {
+        sound.handleForeground();
+      }
+    });
+
+    // 2. Standard document visibility listener
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        sound.handleBackground();
+      } else {
+        sound.handleForeground();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // 3. Window blur/focus and pagehide/pageshow fallbacks
+    const handleBlur = () => sound.handleBackground();
+    const handleFocus = () => sound.handleForeground();
+    window.addEventListener('pagehide', handleBlur);
+    window.addEventListener('pageshow', handleFocus);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      appStatePromise.then((h) => h.remove()).catch(() => {});
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handleBlur);
+      window.removeEventListener('pageshow', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  // Atomic state reference for Android Hardware Back Button routing
+  const activeStateRef = useRef({
+    currentScreen,
+    activeStandaloneLegal,
+    showExitConfirm,
+    showLeaveConfirm,
+    isSettingsOpen,
+    isThemeModalOpen,
+    isLevelSelectOpen,
+    isFreeHintsModalOpen,
+    isGameOver,
+    isLevelComplete,
+    isDailyRewardOpen,
+    isEditingProfile,
+    arrowsCount: arrows.length,
+    originalArrowsCount: originalArrows.length,
+    activeDailyDate,
+  });
+
+  activeStateRef.current = {
+    currentScreen,
+    activeStandaloneLegal,
+    showExitConfirm,
+    showLeaveConfirm,
+    isSettingsOpen,
+    isThemeModalOpen,
+    isLevelSelectOpen,
+    isFreeHintsModalOpen,
+    isGameOver,
+    isLevelComplete,
+    isDailyRewardOpen,
+    isEditingProfile,
+    arrowsCount: arrows.length,
+    originalArrowsCount: originalArrows.length,
+    activeDailyDate,
+  };
+
+  const handleAndroidBackButton = useCallback(() => {
+    const s = activeStateRef.current;
+
+    // 1. Standalone Legal Viewer
+    if (s.activeStandaloneLegal) {
+      setActiveStandaloneLegal(null);
+      return;
+    }
+
+    // 2. Exit Confirmation Dialog (dismiss if already open)
+    if (s.showExitConfirm) {
+      setShowExitConfirm(false);
+      return;
+    }
+
+    // 3. Leave Level Confirmation Dialog (dismiss if already open)
+    if (s.showLeaveConfirm) {
+      setShowLeaveConfirm(false);
+      return;
+    }
+
+    // 4. Modal Overlays (dismiss topmost modal first)
+    if (s.isFreeHintsModalOpen) {
+      setIsFreeHintsModalOpen(false);
+      return;
+    }
+    if (s.isSettingsOpen) {
+      setIsSettingsOpen(false);
+      return;
+    }
+    if (s.isThemeModalOpen) {
+      setIsThemeModalOpen(false);
+      return;
+    }
+    if (s.isLevelSelectOpen) {
+      setIsLevelSelectOpen(false);
+      return;
+    }
+    if (s.isGameOver) {
+      setIsGameOver(false);
+      if (s.activeDailyDate) {
+        setCurrentScreen('daily-challenge');
+      } else {
+        setCurrentScreen('home');
+      }
+      return;
+    }
+    if (s.isLevelComplete) {
+      setIsLevelComplete(false);
+      if (s.activeDailyDate) {
+        setCurrentScreen('daily-challenge');
+      } else {
+        setCurrentScreen('home');
+      }
+      return;
+    }
+
+    // 5. Home screen internal modals (Daily Reward, Edit Profile)
+    if (s.isDailyRewardOpen) {
+      setIsDailyRewardOpen(false);
+      return;
+    }
+    if (s.isEditingProfile) {
+      setIsEditingProfile(false);
+      return;
+    }
+
+    // 6. Gameplay Screens
+    if (s.currentScreen === 'arrow-puzzle') {
+      // If user has made moves in puzzle, show confirmation dialog so progress isn't lost accidentally
+      if (s.arrowsCount < s.originalArrowsCount) {
+        setShowLeaveConfirm(true);
+      } else {
+        if (s.activeDailyDate) {
+          setCurrentScreen('daily-challenge');
+        } else {
+          setCurrentScreen('home');
+        }
+      }
+      return;
+    }
+
+    if (s.currentScreen === 'daily-challenge' || s.currentScreen === 'snake-arrow' || s.currentScreen === 'splash') {
+      setCurrentScreen('home');
+      return;
+    }
+
+    // 7. On Home Screen: show exit confirmation dialog to prevent accidental app exit/restarts
+    if (s.currentScreen === 'home') {
+      setShowExitConfirm(true);
+      return;
+    }
+  }, []);
+
+  // Register Android Hardware Back Button listener via Capacitor App plugin
+  useEffect(() => {
+    const backPromise = CapApp.addListener('backButton', () => {
+      handleAndroidBackButton();
+    });
+
+    return () => {
+      backPromise.then((h) => h.remove()).catch(() => {});
+    };
+  }, [handleAndroidBackButton]);
+
   // Load a level by sequential number
   const switchLevel = useCallback((lvlNumber: number) => {
     const safeNum = Math.max(1, Math.floor(lvlNumber));
@@ -248,6 +448,7 @@ export default function App() {
     isResolvingMoveRef.current = false;
     setAnimatingArrowId(null);
     setCollidingArrowId(null);
+    setBlockingArrowId(null);
     setHintedArrowId(null);
     setIsLevelComplete(false);
     setIsGameOver(false);
@@ -267,6 +468,7 @@ export default function App() {
     isResolvingMoveRef.current = false;
     setAnimatingArrowId(null);
     setCollidingArrowId(null);
+    setBlockingArrowId(null);
     setHintedArrowId(null);
     setIsLevelComplete(false);
     setIsGameOver(false);
@@ -364,6 +566,7 @@ export default function App() {
         }
 
         setCollidingArrowId(arrowId);
+        setBlockingArrowId(check.blockerId || null);
 
         setLives((prevLives) => {
           const nextLives = Math.max(0, prevLives - 1);
@@ -384,7 +587,8 @@ export default function App() {
 
         setTimeout(() => {
           setCollidingArrowId(null);
-        }, 360);
+          setBlockingArrowId(null);
+        }, 480);
       }
     },
     [
@@ -535,7 +739,11 @@ export default function App() {
     >
       {/* 1. Cinematic Splash Screen */}
       {currentScreen === 'splash' && (
-        <SplashScreen onComplete={() => setCurrentScreen('home')} />
+        <SplashScreen
+          onComplete={() => {
+            setCurrentScreen('home');
+          }}
+        />
       )}
 
       {/* Main Mobile Frame Container */}
@@ -562,13 +770,22 @@ export default function App() {
             onOpenSettings={() => setIsSettingsOpen(true)}
             onOpenThemes={() => setIsThemeModalOpen(true)}
             onClaimDailyCoins={handleAwardCoins}
+            isEditingProfile={isEditingProfile}
+            onSetIsEditingProfile={setIsEditingProfile}
+            isDailyRewardOpen={isDailyRewardOpen}
+            onSetIsDailyRewardOpen={setIsDailyRewardOpen}
           />
         )}
 
         {/* 3. Daily Challenge Screen (Reference Image 4) */}
         {currentScreen === 'daily-challenge' && (
           <DailyChallengeScreen
-            onBack={() => setCurrentScreen('home')}
+            onBack={() => {
+              if (canShowInterstitialAd()) {
+                showInterstitialAd();
+              }
+              setCurrentScreen('home');
+            }}
             onPlayMission={startDailyMission}
           />
         )}
@@ -577,7 +794,13 @@ export default function App() {
         {currentScreen === 'snake-arrow' && (
           <SnakeArrowMode
             theme={currentTheme}
-            onBackToHome={() => setCurrentScreen('home')}
+            coins={coins}
+            onBackToHome={() => {
+              if (canShowInterstitialAd()) {
+                showInterstitialAd();
+              }
+              setCurrentScreen('home');
+            }}
             onAwardCoins={handleAwardCoins}
           />
         )}
@@ -589,6 +812,8 @@ export default function App() {
             <div className="shrink-0 pt-1">
               <HeaderHUD
                 levelNumber={currentLevelNumber}
+                customTitle={activeDailyDate ? 'Daily Challenge' : undefined}
+                customSubtitle={activeDailyDate || undefined}
                 difficultyScore={currentLevel.difficultyScore}
                 remainingArrows={arrows.length}
                 lives={lives}
@@ -626,6 +851,7 @@ export default function App() {
                 animatingArrowId={animatingArrowId}
                 animatingDirection={animatingDirection}
                 collidingArrowId={collidingArrowId}
+                blockingArrowId={blockingArrowId}
                 hintedArrowId={hintedArrowId}
                 showGridDots={showGridDots}
                 magnifierActive={magnifierActive}
@@ -668,9 +894,9 @@ export default function App() {
           role="alertdialog"
           aria-modal="true"
           aria-labelledby="leave-level-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/75 p-4"
         >
-          <div className="w-full max-w-xs bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95 duration-150">
+          <div className="w-full max-w-xs bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 text-center">
             <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto mb-2.5 shadow-inner">
               <AlertCircle className="w-6 h-6" />
             </div>
@@ -695,6 +921,9 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setShowLeaveConfirm(false);
+                  if (canShowInterstitialAd()) {
+                    showInterstitialAd();
+                  }
                   if (activeDailyDate) {
                     setCurrentScreen('daily-challenge');
                   } else {
@@ -730,10 +959,12 @@ export default function App() {
           gridWidth={currentLevel.gridWidth}
           gridHeight={currentLevel.gridHeight}
           coinsEarned={lastEarnedCoins}
-          difficulty={getSimplifiedDifficulty(currentLevelNumber)}
+          difficulty={activeDailyDate ? 'MEDIUM' : getSimplifiedDifficulty(currentLevelNumber, currentLevel.difficultyScore)}
           elapsedSeconds={elapsedLevelSeconds}
           mistakesCount={mistakesCount}
           hintsCount={hintsUsedCount}
+          isDailyMission={Boolean(activeDailyDate)}
+          dailyDateLabel={activeDailyDate || undefined}
           onNextLevel={handleNextLevel}
           onDoubleCoinsReward={(bonusCoins) => {
             setCoins((prev) => {
@@ -836,6 +1067,49 @@ export default function App() {
           onRestartLevel={handleRestart}
           onClose={() => setIsSettingsOpen(false)}
         />
+      )}
+
+      {/* Android Hardware Back Button: Exit Game Confirmation Dialog */}
+      {showExitConfirm && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="exit-game-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+        >
+          <div className="w-full max-w-xs bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center mx-auto mb-2.5 shadow-inner">
+              <LogOut className="w-6 h-6" />
+            </div>
+            <h4
+              id="exit-game-title"
+              className="text-lg font-black text-slate-800 tracking-tight mb-1"
+            >
+              Exit Arrow Master?
+            </h4>
+            <p className="text-xs text-slate-500 font-medium mb-5">
+              Are you sure you want to close the game?
+            </p>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowExitConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  CapApp.exitApp().catch(() => {});
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs uppercase shadow-sm"
+              >
+                Exit Game
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

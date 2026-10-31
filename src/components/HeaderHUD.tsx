@@ -4,10 +4,12 @@ import { GoldCoin } from './GoldCoin';
 import { GameTheme } from '../game/theme';
 import { LevelCompletionStats } from '../game/completionStats';
 
-export type DisplayDifficulty = 'EASY' | 'NORMAL' | 'HARD' | 'EXPERT';
+export type DisplayDifficulty = 'EASY' | 'MEDIUM' | 'HARD' | 'EXPERT';
 
 interface HeaderHUDProps {
   levelNumber: number;
+  customTitle?: string;
+  customSubtitle?: string;
   difficultyScore?: number;
   remainingArrows: number;
   lives: number;
@@ -21,14 +23,19 @@ interface HeaderHUDProps {
 }
 
 export function getDifficultyFromScore(score: number = 0, levelNumber: number = 1): DisplayDifficulty {
-  if (score <= 35 || levelNumber <= 8) return 'EASY';
-  if (score <= 90 || levelNumber <= 25) return 'NORMAL';
-  if (score <= 200 || levelNumber <= 60) return 'HARD';
-  return 'EXPERT';
+  if (levelNumber <= 8 && score <= 155) return 'EASY';
+  if (levelNumber <= 25 && score <= 275) return 'MEDIUM';
+  if (levelNumber <= 60 && score <= 450) return 'HARD';
+  if (levelNumber > 60 || score > 450) return 'EXPERT';
+  if (levelNumber <= 8) return 'EASY';
+  if (levelNumber <= 25) return 'MEDIUM';
+  return 'HARD';
 }
 
 export const HeaderHUD: React.FC<HeaderHUDProps> = ({
   levelNumber,
+  customTitle,
+  customSubtitle,
   difficultyScore = 0,
   remainingArrows,
   lives,
@@ -47,7 +54,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
 
   const difficultyColors: Record<DisplayDifficulty, { bg: string; text: string; border: string }> = {
     EASY: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-    NORMAL: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+    MEDIUM: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
     HARD: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
     EXPERT: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
   };
@@ -82,14 +89,14 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
           <ChevronLeft className="w-7 h-7 stroke-[2.6]" style={{ color: theme.primaryColor }} />
         </button>
 
-        {/* Level Number */}
+        {/* Level Number or Mode Title */}
         <button
           type="button"
           onClick={handleLevelClick}
-          aria-label={`Level ${levelNumber}, triple-tap for developer debug`}
+          aria-label={`${customTitle || `Level ${levelNumber}`}, triple-tap for developer debug`}
           className="text-2xl font-black text-slate-900 tracking-tight leading-none hover:opacity-80 transition-opacity cursor-pointer px-2 py-0.5 rounded-lg"
         >
-          Level {levelNumber}
+          {customTitle || `Level ${levelNumber}`}
         </button>
 
         {/* Settings Button */}
@@ -105,6 +112,11 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
 
       {/* 2. INFORMATION AREA: Difficulty label directly below the level number */}
       <div className="flex items-center justify-center gap-1.5 mb-1.5">
+        {customSubtitle && (
+          <span className="text-[11px] font-black text-blue-600 uppercase tracking-wider mr-1">
+            {customSubtitle} ·
+          </span>
+        )}
         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
           Difficulty:
         </span>

@@ -132,7 +132,8 @@ export function generateDailyMission(dateStr: string): PuzzleLevel {
     ...baseLevel,
     id: 900000 + (dateHash % 99999),
     name: 'Daily Mission',
-    subtitle: dateStr,
+    subtitle: `${baseLevel.subtitle} · ${dateStr}`,
+    difficulty: baseLevel.arrows.length >= 22 ? 'Hard' : 'Medium',
     arrows: baseLevel.arrows.map((a) => ({
       ...a,
       points: a.points.map((p) => ({ ...p })),

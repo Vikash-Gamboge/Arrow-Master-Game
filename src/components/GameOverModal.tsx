@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { HeartCrack, Play, RotateCcw, AlertCircle, Loader2 } from 'lucide-react';
 import {
   showRewardedAd,
-  isRewardedAdReady,
-  subscribeAdState,
+  loadRewardedAd,
+  checkRewardedAdReady,
+  subscribeToAdState,
   AdLoadState,
-  adMobRewardedService,
+  unityAdsService,
 } from '../game/adService';
 import { sound } from '../game/sound';
 
@@ -20,27 +21,34 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   onWatchAdSuccess,
   onMainMenu,
 }) => {
-  const [adState, setAdState] = useState<AdLoadState>(() => adMobRewardedService.getAdState());
+  const [adState, setAdState] = useState<AdLoadState>(() => unityAdsService.getAdState());
   const [isRequestingAd, setIsRequestingAd] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Subscribe to AdMob state changes
+  // Subscribe to Unity Ads state changes and verify readiness on mount
   useEffect(() => {
-    const unsubscribe = subscribeAdState((state) => {
+    const unsubscribe = subscribeToAdState((state, lastErr) => {
       setAdState(state);
       if (state === 'READY') {
         setErrorMessage(null);
+      } else if (state === 'FAILED' && lastErr) {
+        setErrorMessage(`Ad unavailable (${lastErr}). Tap to retry or restart.`);
       }
     });
+
+    checkRewardedAdReady().then((ready) => {
+      if (!ready) {
+        loadRewardedAd();
+      }
+    });
+
     return () => unsubscribe();
   }, []);
 
-  const hasNativeBridge = adMobRewardedService.isNativeBridgePresent();
-  const isReady = isRewardedAdReady();
-  const isLoading = adState === 'LOADING' || isRequestingAd;
+  const isLoading = isRequestingAd || adState === 'LOADING' || adState === 'SHOWING';
 
   const handleWatchAdClick = async () => {
-    if (isLoading || isRequestingAd) return;
+    if (isLoading) return;
     sound.playTap();
     setIsRequestingAd(true);
     setErrorMessage(null);
@@ -51,18 +59,19 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
 
       if (result.rewardGranted) {
         sound.playWin();
-        // ONLY grant +1 Life after verified AdMob reward callback
+        // ONLY grant +1 Life after verified Unity Ads reward callback
         onWatchAdSuccess();
       } else {
         sound.playBump();
         setErrorMessage(
-          result.message || 'Rewarded ad could not be completed. You can restart the level freely to continue playing.'
+          result.message || 'Ad is currently unavailable. Please try again or restart.'
         );
       }
-    } catch {
+    } catch (e: any) {
       setIsRequestingAd(false);
       sound.playBump();
-      setErrorMessage('Rewarded ad is currently unavailable. Please restart the level to continue.');
+      const raw = e?.message || unityAdsService.getLastError() || 'Unknown error';
+      setErrorMessage(`Ad failed (${raw}). Please try again or restart.`);
     }
   };
 
@@ -71,9 +80,9 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="gameover-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 backdrop-blur-xs p-4 animate-in fade-in duration-200 select-none"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/75 p-4 select-none"
     >
-      <div className="w-full max-w-sm bg-white rounded-3xl p-6 text-center shadow-2xl border border-slate-100 flex flex-col items-center animate-in zoom-in-95 duration-150 relative">
+      <div className="w-full max-w-sm bg-white rounded-3xl p-6 text-center shadow-2xl border border-slate-100 flex flex-col items-center relative">
         {/* Heartbreak Graphic */}
         <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center mb-3 ring-8 ring-rose-50/60 shadow-inner">
           <HeartCrack className="w-9 h-9 stroke-[2.2]" />
@@ -99,7 +108,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         {errorMessage && (
           <div
             role="alert"
-            className="w-full mb-3 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-start gap-2 animate-in fade-in text-left"
+            className="w-full mb-3 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-start gap-2 text-left"
           >
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <span className="leading-snug">{errorMessage}</span>
@@ -122,7 +131,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Ad is loading...</span>
+                <span>Loading advertisement...</span>
               </>
             ) : (
               <>

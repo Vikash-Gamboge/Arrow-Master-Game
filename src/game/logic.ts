@@ -9,6 +9,7 @@ export interface ArrowData {
   id: string;
   points: Point[]; // Sequence of grid points forming the arrow line
   dir: Direction;  // Direction of the arrowhead at the last point
+  color?: string;  // Vibrant theme/layer accent color for shaped puzzles
 }
 
 export type Difficulty = 'Beginner' | 'Easy' | 'Medium' | 'Hard' | 'Very Hard' | 'Expert' | 'Master';
